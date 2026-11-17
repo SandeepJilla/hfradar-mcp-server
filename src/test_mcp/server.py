@@ -1,22 +1,21 @@
-"""MCP server for the GCOOS HF radar radial files at https://hfr.gcoos.org/data/.
+"""MCP server for CODAR HF radar radial archives.
 
-Layout: <operator>/<SITE>/raw/{MeasPattern,IdealPattern}/RDL{m,i}_<SITE>_YYYY_MM_DD_HHMM.ruv
-Files are hourly CODAR SeaSonde LLUV radial maps (rolling ~1 month window).
+GCOOS HTTP layout: <operator>/<SITE>/raw/{MeasPattern,IdealPattern}/<filename>.ruv
+HFRNet S3 layout: <SITE>/<YYYY-MM>/<filename>.ruv (root points to radials/).
+Files are hourly CODAR SeaSonde LLUV radial maps.
 """
 
-import json
-import os
 import re
 import time
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 from typing import Literal
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
-BASE = os.environ.get("HFR_BASE_URL", "https://hfr.gcoos.org/data/").rstrip("/") + "/"
+from test_mcp.storage import archive_from_env
+
+archive = archive_from_env()
 TTL = 600  # seconds to cache directory listings
 PATTERNS = {"measured": "MeasPattern", "ideal": "IdealPattern"}
 RUV = re.compile(r"RDL[mi]_([A-Z0-9]+)_(\d{4})_(\d{2})_(\d{2})_(\d{2})(\d{2})\.ruv$")
@@ -35,54 +34,52 @@ mcp = MCPServer("gcoos-hfr")
 _cache: dict[str, tuple[float, list[dict]]] = {}
 
 
-def fetch(url: str, accept: str = "*/*") -> bytes:
-    req = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": "gcoos-hfr-mcp"})
-    try:
-        with urllib.request.urlopen(req, timeout=60) as r:
-            return r.read()
-    except urllib.error.HTTPError as e:
-        raise ToolError(f"HTTP {e.code} fetching {url}") from e
-    except urllib.error.URLError as e:
-        raise ToolError(f"Could not reach {url}: {e.reason}") from e
-
-
 def ls(path: str) -> list[dict]:
-    """Directory listing (Caddy JSON) for a path relative to BASE, cached."""
+    """Cached directory listing relative to the configured archive root."""
     hit = _cache.get(path)
     if hit and time.time() - hit[0] < TTL:
         return hit[1]
-    entries = json.loads(fetch(BASE + path, accept="application/json"))
+    entries = archive.list(path)
     _cache[path] = (time.time(), entries)
     return entries
 
 
-def sites() -> dict[str, str]:
-    """SITE -> operator."""
-    return {
-        s["name"].rstrip("/").upper(): op["name"].rstrip("/")
-        for op in ls("") if op["is_dir"]
-        for s in ls(op["name"]) if s["is_dir"]
-    }
+def sites() -> dict[str, str | None]:
+    """SITE -> operator (unknown for the HFRNet layout)."""
+    if archive.layout == "gcoos":
+        return {
+            site["name"].rstrip("/").upper(): op["name"].rstrip("/")
+            for op in ls("") if op["is_dir"]
+            for site in ls(op["name"].rstrip("/") + "/") if site["is_dir"]
+        }
+    return {entry["name"].rstrip("/").upper(): None for entry in ls("") if entry["is_dir"]}
 
 
 def files(site: str, pattern: str) -> list[tuple[datetime, str, int]]:
     """Sorted (time, url, size) for every radial file of a site/pattern."""
     site = site.upper()
-    op = sites().get(site)
-    if not op:
-        raise ToolError(f"Unknown site {site!r}. Known: {', '.join(sorted(sites()))}")
+    known = sites()
+    if site not in known:
+        raise ToolError(f"Unknown site {site!r}. Known: {', '.join(sorted(known))}")
     if pattern not in PATTERNS:
         raise ToolError(f"pattern must be one of {list(PATTERNS)}")
-    path = f"{op}/{site}/raw/{PATTERNS[pattern]}/"
     try:
-        entries = ls(path)
-    except ToolError:
-        raise ToolError(f"Site {site} has no {pattern}-pattern data")
+        if archive.layout == "gcoos":
+            paths = [f"{known[site]}/{site}/raw/{PATTERNS[pattern]}/"]
+        else:
+            paths = [f"{site}/{entry['name']}" for entry in ls(f"{site}/")
+                     if entry["is_dir"] and re.fullmatch(r"\d{4}-\d{2}/", entry["name"])]
+        entries = [(path, entry) for path in paths for entry in ls(path)]
+    except ToolError as exc:
+        raise ToolError(f"Could not list {pattern}-pattern data for {site}: {exc}") from exc
     out = []
-    for e in entries:
-        if m := RUV.search(e["name"]):
+    file_prefix = "RDLm_" if pattern == "measured" else "RDLi_"
+    for path, e in entries:
+        if e["is_dir"] or not e["name"].startswith(file_prefix):
+            continue
+        if (m := RUV.fullmatch(e["name"])) and m[1] == site:
             y, mo, d, hh, mm = map(int, m.groups()[1:])
-            out.append((datetime(y, mo, d, hh, mm, tzinfo=timezone.utc), BASE + path + e["name"], e["size"]))
+            out.append((datetime(y, mo, d, hh, mm, tzinfo=timezone.utc), archive.url(path + e["name"]), e["size"]))
     return sorted(out)
 
 
@@ -130,7 +127,7 @@ def parse_ruv(text: str) -> tuple[dict, list[dict]]:
 
 @mcp.tool()
 def list_sites() -> list[dict]:
-    """List the HF radar sites on hfr.gcoos.org and the operator (gerg, rates, usm) running each."""
+    """List HF radar sites and their operators in the configured archive."""
     return [{"site": s, "operator": op} for s, op in sorted(sites().items())]
 
 
@@ -189,7 +186,7 @@ def get_radials(
     else:
         t, url, _ = fl[-1]
 
-    header, rows = parse_ruv(fetch(url).decode("latin-1"))
+    header, rows = parse_ruv(archive.read(url).decode("latin-1"))
     total = len(rows)
     if not include_flagged:
         rows = [r for r in rows if r.get("flag", 0) == 0]

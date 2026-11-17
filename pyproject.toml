@@ -1,10 +1,11 @@
 [project]
 name = "test-mcp"
 version = "0.1.0"
-description = "MCP server for GCOOS HF radar radial data (hfr.gcoos.org/data)"
+description = "MCP server for GCOOS HTTP and HFRNet S3 radial data"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "boto3>=1.35,<2",
     "mcp[cli]>=2.3.0",
 ]
 
