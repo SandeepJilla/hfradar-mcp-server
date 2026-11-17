@@ -25,7 +25,7 @@ uv run test-mcp              # stdio
 Claude Code:
 
 ```bash
-claude mcp add gcoos-hfr -- uv --directory /home/sanzo/test-mcp run test-mcp
+claude mcp add gcoos-hfr -- uv --directory /home/xxxx/test-mcp run test-mcp
 ```
 
 Set `HFR_BASE_URL` to point the server at a different mirror. It has no dependencies beyond `mcp`, and HTTP goes through the stdlib.
