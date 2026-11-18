@@ -1,49 +1,54 @@
 # HF radar MCP server
 
-Read CODAR SeaSonde radial data through MCP using either source below.
+MCP server for the GCOOS HF radar network. It answers questions about site status,
+diagnosis findings, measurements, outages, radial vectors and surface currents.
 
-## 1. GCOOS over HTTP (default)
+## hfradmin API (default)
 
-Use the public archive at <https://hfr.gcoos.org/data/>. No AWS credentials needed.
+The server reads the read-only hfradmin JSON API described in
+[docs/API_V1.md](docs/API_V1.md). No credentials are needed for now.
 
 ```bash
 uv run test-mcp
 ```
 
-For a mirror, set `HFR_BASE_URL`:
+| Variable | Default | Purpose |
+|---|---|---|
+| `HFR_API_URL` | `https://hfr.gcoos.org/api/v1` | API base URL (use it for a staging host) |
+| `HFR_API_TOKEN` | unset | Sent as `Authorization: Bearer ...` if the API ever requires it |
 
-```bash
-HFR_BASE_URL=https://mirror.example/data/ uv run test-mcp
-```
-
-Mirrors must serve Caddy JSON listings with the layout
-`<operator>/<SITE>/raw/{MeasPattern,IdealPattern}/<file>.ruv`.
-
-## 2. HFRNet radials over S3
-
-Use your AWS credentials or `AWS_PROFILE` to access the radial archive:
-
-```bash
-HFR_DATA_PATH=s3://arn:aws:s3:us-east-1:579273261343:accesspoint/hfrnet-prod/radials/ \
-uv run test-mcp
-```
-
-S3 support is included. Other buckets or access point URIs work with the layout
-`<SITE>/<YYYY-MM>/<file>.ruv` under the configured root. Access requires
-`s3:ListBucket` and `s3:GetObject`; only the configured prefix is used.
-
-`HFR_DATA_PATH` overrides `HFR_BASE_URL`. The server uses stdio for both sources.
+Transport is stdio. Authentication, if added, is a change to `HfrApi.headers()` only.
 
 ## Tools
 
-| Tool | What it does |
-|---|---|
-| `list_sites()` | Sites and operators (`operator` is null for HFRNet) |
-| `list_files(site, ...)` | Hourly files, with time filtering and archive coverage |
-| `get_radials(site, ...)` | Radial vectors, metadata, and summary; latest file by default |
+| Tool | Answers | API routes |
+|---|---|---|
+| `network_overview()` | Data freshness and the state of every site (with position, frequency, data age) | `/meta`, `/status` |
+| `get_site(site)` | One site: status, TX settings, open outages and findings | `/sites/{site}` |
+| `get_findings(status, site, rule, severity, since, limit)` | What is wrong, worst first | `/findings` |
+| `get_rules()` | Rule meanings, thresholds, possible causes (cached 1 h) | `/rules` |
+| `list_diagnostic_fields(search)` | Field codes for diagnostics (cached 1 h) | `/diagnostics/catalog` |
+| `get_diagnostics(site, fields, start, end, resolution, pattern, max_rows)` | Measurement series with a summary; rows thinned to `max_rows` | `/sites/{site}/diagnostics` |
+| `get_history(kind, site, start, end, status, limit)` | `outages`, `annotations` or `settings_changes` | `/outages`, `/annotations`, `/sites/{site}/settings-history` |
+| `list_radial_files(site, start, end, pattern, limit)` | Coverage and gaps, newest first | `/sites/{site}/radials` |
+| `get_radials(site, filename, time, pattern, max_rows)` | Header and vectors of one hourly file (latest by default) | `/radials/{filename}`, `/radials/{filename}/vectors` |
+| `get_surface_currents(source, lat, lon, hours)` | Total-current sources, or one cell's time series | `/totals`, `/totals/{source}/cell` |
 
-Times are ISO 8601 UTC, for example `2026-11-17T13:00Z`. `velocity_cm_s` follows
-the CODAR convention: a positive value means flow **toward** the radar site.
+Times are ISO 8601 UTC (`2026-11-17T13:00Z` or `2026-11-17`); the server sends them to the
+API as `2026-11-17T13:00:00Z`. Radial files reach the database in batches every few hours,
+so check `network_overview().freshness` before calling a site down.
+`velocity` follows the CODAR convention: positive means flow **toward** the radar site.
+
+## Archive mode (fallback)
+
+Until the API is in production, the previous file-archive server is still available as
+`test-mcp-archive`. It reads `.ruv` files from <https://hfr.gcoos.org/data/> (override with
+`HFR_BASE_URL`) or from the HFRNet S3 archive (`HFR_DATA_PATH=s3://...`) and offers
+`list_sites`, `list_files` and `get_radials`.
+
+```bash
+uv run test-mcp-archive
+```
 
 ## Development checks
 
@@ -51,3 +56,5 @@ the CODAR convention: a positive value means flow **toward** the radar site.
 uv sync
 uv run python -m unittest discover -s tests -v
 ```
+
+API tests use a fake transport, so they run without network access.
