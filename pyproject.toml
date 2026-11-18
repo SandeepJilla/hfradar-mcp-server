@@ -12,6 +12,7 @@ dependencies = [
 [project.scripts]
 test-mcp = "test_mcp:main"
 test-mcp-archive = "test_mcp.archive_server:main"
+test-mcp-hfrnet = "test_mcp.hfrnet_server:main"
 
 [build-system]
 requires = ["uv_build>=0.13.8,<0.14.0"]

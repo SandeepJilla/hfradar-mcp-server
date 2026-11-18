@@ -3,6 +3,17 @@
 MCP server for the GCOOS HF radar network. It answers questions about site status,
 diagnosis findings, measurements, outages, radial vectors and surface currents.
 
+This package provides three separate stdio MCP servers. Register each desired
+command separately in your MCP client:
+
+| Command | Data source | Configuration |
+|---|---|---|
+| `test-mcp` | GCOOS hfradmin v1 API | `HFR_API_URL`, optional `HFR_API_TOKEN` |
+| `test-mcp-archive` | GCOOS HTTP radial archive or HFRNet S3 radials | `HFR_BASE_URL` or `HFR_DATA_PATH` |
+| `test-mcp-hfrnet` | HFRNet FastAPI totals datasets | `HFR_API_BASE_URL` |
+
+Each server loads its own client and configuration independently.
+
 ## hfradmin API (default)
 
 The server reads the read-only hfradmin JSON API described in
@@ -49,6 +60,38 @@ Until the API is in production, the previous file-archive server is still availa
 ```bash
 uv run test-mcp-archive
 ```
+
+GCOOS HTTP access needs neither FastAPI nor AWS credentials. For a mirror, use
+`HFR_BASE_URL=https://mirror.example/data/`; it must serve Caddy JSON listings
+with `<operator>/<SITE>/raw/{MeasPattern,IdealPattern}/<file>.ruv` paths.
+
+For HFRNet S3 radials, use your AWS credentials or `AWS_PROFILE`:
+
+```bash
+HFR_DATA_PATH=s3://arn:aws:s3:us-east-1:579273261343:accesspoint/hfrnet-prod/radials/ \
+uv run test-mcp-archive
+```
+
+Other S3 roots must use `<SITE>/<YYYY-MM>/<file>.ruv` paths. Access requires
+`s3:ListBucket` and `s3:GetObject`. `HFR_DATA_PATH` overrides `HFR_BASE_URL`.
+
+## HFRNet totals datasets (separate server)
+
+The dedicated HFRNet MCP server uses the deployed API at
+[cloud.data.ioos.us/hfrnet](https://cloud.data.ioos.us/hfrnet/) by default:
+
+```bash
+uv run test-mcp-hfrnet
+```
+
+Set `HFR_API_BASE_URL` to use another deployment or a local service, for example
+`HFR_API_BASE_URL=http://localhost:5000 uv run test-mcp-hfrnet`.
+This server offers `get_dataset_options`, `discover_datasets`,
+`get_dataset_metadata`, and `get_latest_time`. Searches default to the latest
+available period. These tools return file availability, links, and metadata.
+
+See [docs/HFRNET.md](docs/HFRNET.md) for examples, selectors, limits, and response
+semantics. The HFRNet tools are registered only by `test-mcp-hfrnet`.
 
 ## Development checks
 
