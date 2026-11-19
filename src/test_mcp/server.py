@@ -33,18 +33,16 @@ Tools for the GCOOS HF radar network (hfradmin API v1). Times are UTC, ISO 8601.
 api = api_from_env()
 mcp = MCPServer("gcoos-hfr", instructions=INSTRUCTIONS)
 
-STATIC_TTL = 3600  # seconds to cache /rules and /diagnostics/catalog
+STATIC_TTL = 3600
 SITE = re.compile(r"[A-Za-z0-9]{4}")
-SEGMENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")  # file names, source keys; never "." or ".."
+SEGMENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 FIELD_CODE = re.compile(r"[^\s,&#?%/\\]{1,40}")
-MAX_HOURS = 720  # the API serves at most 30 days of totals
+MAX_HOURS = 720
 DEFAULT_SPAN = {"hour": timedelta(hours=24), "day": timedelta(days=30), "raw": timedelta(hours=6)}
 VELOCITY_COLUMNS = {"velo", "velocity", "velocity_cm_s"}
 
 Pattern = Literal["ideal", "measured"]
 
-
-# --- helpers -----------------------------------------------------------------------
 
 def _parse(value: Any, name: str) -> datetime:
     try:
@@ -166,8 +164,6 @@ def _summarize_series(series: dict) -> dict:
     return out
 
 
-# --- network and site --------------------------------------------------------------
-
 @mcp.tool()
 def network_overview() -> dict:
     """Start here: freshness of the data plus the state of every site.
@@ -190,8 +186,6 @@ def get_site(site: str) -> dict:
     """
     return api.get("sites", _site(site))
 
-
-# --- diagnosis ---------------------------------------------------------------------
 
 @mcp.tool()
 def get_findings(
@@ -225,8 +219,6 @@ def get_rules() -> Any:
     """
     return api.get("rules", cache_ttl=STATIC_TTL)
 
-
-# --- measurements ------------------------------------------------------------------
 
 @mcp.tool()
 def list_diagnostic_fields(search: str | None = None) -> Any:
@@ -289,8 +281,6 @@ def get_diagnostics(
     return {**{k: v for k, v in data.items() if k != "series"}, "series": series}
 
 
-# --- history -----------------------------------------------------------------------
-
 @mcp.tool()
 def get_history(
     kind: Literal["outages", "annotations", "settings_changes"],
@@ -318,8 +308,6 @@ def get_history(
         return api.get("outages", status=status, site=code, start=lo, end=hi, limit=_limit(limit))
     return api.get("annotations", site=code, start=lo, end=hi, limit=_limit(limit))
 
-
-# --- radials -----------------------------------------------------------------------
 
 @mcp.tool()
 def list_radial_files(
@@ -396,8 +384,6 @@ def get_radials(
         out["vectors_meta"] = extra
     return out
 
-
-# --- total currents ----------------------------------------------------------------
 
 @mcp.tool()
 def get_surface_currents(

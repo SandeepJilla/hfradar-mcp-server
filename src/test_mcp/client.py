@@ -12,17 +12,17 @@ from urllib.parse import quote, urlencode, urljoin, urlsplit
 from mcp.server.mcpserver.exceptions import ToolError
 
 DEFAULT_API_URL = "https://hfr.gcoos.org/api/v1"
-MAX_RESPONSE_BYTES = 10 * 1024 * 1024  # refuse anything larger; the model cannot use it anyway
+MAX_RESPONSE_BYTES = 10 * 1024 * 1024
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
 class _SameOriginRedirect(urllib.request.HTTPRedirectHandler):
-    """Never follow a redirect to another scheme or host (it would carry the bearer token along)."""
+    """Refuse redirects to another scheme or host."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         old, new = urlsplit(req.full_url), urlsplit(urljoin(req.full_url, newurl))
         if (old.scheme, old.netloc) != (new.scheme, new.netloc):
-            return None  # urllib then raises the 3xx as an HTTPError
+            return None
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
@@ -93,10 +93,10 @@ class HfrApi:
 
     @staticmethod
     def _error_message(exc: urllib.error.HTTPError) -> str:
-        """Surface the API's own `{"error": "..."}` text (it says what to do)."""
+        """Use the API's own error text."""
         try:
             body = json.loads(exc.read(65536))
-            # Usually {"error": "<text>"}; some routes answer {"error": 404, "message": "<text>"}.
+            # some routes answer {"error": 404, "message": "<text>"}
             message = body["error"] if isinstance(body.get("error"), str) else body.get("message")
         except (ValueError, AttributeError, OSError):
             message = None

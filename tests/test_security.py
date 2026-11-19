@@ -89,7 +89,7 @@ class CurrentsThinningTests(unittest.TestCase):
         install({"/api/v1/totals/k/cell": series})
         result = server.get_surface_currents("k", lat=28, lon=-95.5, hours=n, max_points=10)
         self.assertLessEqual(len(result["times"]), 11)
-        self.assertEqual(result["times"][-1], "t199")  # newest point kept
+        self.assertEqual(result["times"][-1], "t199")
         self.assertEqual({len(result[k]) for k in ("times", "u", "v", "nrad")}, {len(result["times"])})
         self.assertEqual(result["cell"], {"lat": 28.0, "lon": -95.5})
         self.assertEqual(result["summary"], {"points_total": 200, "points_returned": len(result["times"]),
@@ -105,7 +105,7 @@ class ClientHardeningTests(unittest.TestCase):
                             ("http://hfr.example/api/v1", "secret")):
             with self.subTest(base=base), self.assertRaises(ValueError):
                 HfrApi(base, token=token)
-        HfrApi("http://127.0.0.1:8000/api/v1", token="secret")  # local development is fine
+        HfrApi("http://127.0.0.1:8000/api/v1", token="secret")
         HfrApi("https://hfr.example/api/v1", token="secret")
 
     def test_invalid_url_errors_are_tool_errors(self):
@@ -163,8 +163,8 @@ class ClientHardeningTests(unittest.TestCase):
         api = HfrApi(f"http://127.0.0.1:{origin.server_address[1]}/api/v1", token="secret", opener=make_opener(proxy=False))
         with self.assertRaisesRegex(ToolError, "another origin"):
             api.get("redir")
-        self.assertEqual(seen, [])  # the token never reached the other host
-        self.assertEqual(api.get("same"), {"ok": True})  # same-origin redirects still work
+        self.assertEqual(seen, [])
+        self.assertEqual(api.get("same"), {"ok": True})
 
 
 if __name__ == "__main__":
